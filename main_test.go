@@ -63,7 +63,7 @@ func TestCafeCount(t *testing.T) {
 		{"count=0", 0, "moscow", 0, http.StatusOK},
 		{"count=1", 1, "moscow", 1, http.StatusOK},
 		{"count=2", 2, "moscow", 2, http.StatusOK},
-		{"count=100", 100, "moscow", len(cafeList["moscow"]), http.StatusOK},
+		{"count=100", 100, "moscow", min(len(cafeList["moscow"]), 100), http.StatusOK},
 	}
 
 	for _, tt := range requests {
@@ -74,22 +74,17 @@ func TestCafeCount(t *testing.T) {
 			response := httptest.NewRecorder()
 
 			handler.ServeHTTP(response, req)
+			require.Equal(t, tt.wantCode, response.Code)
 
-			assert.Equal(t, tt.wantCode, response.Code)
+			answer := strings.TrimSpace(response.Body.String())
 
-			if response.Code == http.StatusOK {
-
-				body := response.Body.String()
-
-				if tt.count == 0 {
-					assert.Empty(t, body, "При count=0 тело ответа должно быть пустым")
-					return
-				}
-
-				cafes := strings.Split(body, ",")
-
-				assert.Equal(t, tt.want, len(cafes))
+			if answer == "" {
+				require.Equal(t, 0, tt.count, "Пустой ответ возможен только при count=0")
+				return
 			}
+
+			cafes := strings.Split(answer, ",")
+			require.Len(t, cafes, tt.want)
 		})
 	}
 }
@@ -100,8 +95,8 @@ func TestCafeSearch(t *testing.T) {
 
 	requests := []struct {
 		name      string
-		search    string // передаваемое значение search
-		wantCount int    // ожидаемое количество кафе в ответе
+		search    string 
+		wantCount int    
 	}{
 		{"search=фасоль", "фасоль", 0}, //Я захотел расширить поиск
 		{"search=мир", "мир", 1},
@@ -122,21 +117,26 @@ func TestCafeSearch(t *testing.T) {
 
 			handler.ServeHTTP(response, req)
 
-			assert.Equal(t, http.StatusOK, response.Code)
+			require.Equal(t, http.StatusOK, response.Code)
 
 			body := response.Body.String()
 			var cafes []string
 			if body != "" {
 				cafes = strings.Split(body, ",")
+				for i := range cafes {
+					cafes[i] = strings.TrimSpace(cafes[i])
+				}
 			}
 
-			assert.Equal(t, tt.wantCount, len(cafes), "Неверное количество кафе в ответе")
+			assert.Len(t, cafes, tt.wantCount, "Неверное количество кафе в ответе")
 
-			searchLower := strings.ToLower(tt.search)
-			for _, cafe := range cafes {
-				cafeLower := strings.ToLower(cafe)
-				assert.True(t, strings.Contains(cafeLower, searchLower),
-					"Кафе '%s' не содержит строку '%s'", cafe, tt.search)
+			if tt.wantCount > 0 {
+				searchLower := strings.ToLower(tt.search)
+				for _, cafe := range cafes {
+					cafeLower := strings.ToLower(cafe)
+					assert.Contains(t, cafeLower, searchLower,
+						"Кафе '%s' должно содержать подстроку '%s'", cafe, tt.search)
+				}
 			}
 		})
 	}
